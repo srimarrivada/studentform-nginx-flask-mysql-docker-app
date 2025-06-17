@@ -1,0 +1,66 @@
+name: python-flask-mysql-demo
+services:
+  db:
+    container_name: mysql
+    image: mysql:latest
+    restart: always
+    healthcheck:
+      test: ['CMD-SHELL', 'mysqladmin ping --host localhost --password="$(cat /run/secrets/db-password)" --silent']
+      start_period: 30s
+      interval: 30s
+      retries: 5
+    volumes:
+      - db-data:/var/lib/mysql
+    secrets:
+      - db-password
+    environment:
+      - MYSQL_ROOT_PASSWORD_FILE=/run/secrets/db-password
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+    expose:
+      - 3306
+    networks:
+      - backnet
+  app:
+    container_name: flask
+    build: 
+      context: ./flask-backend
+    secrets:
+      - db-password
+    environment:
+      - MYSQL_HOST=${MYSQL_HOST}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+    stop_signal: SIGINT # flask requires SIGINT to stop gracefully
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - backnet
+      - frontnet
+  web:
+    container_name: nginx
+    image: nginx:alpine
+    environment:
+      - FLASK_SERVER_ADDR=app:8070
+    volumes: 
+      - ./web-frontend:/var/tmp
+      - ./nginx-proxy:/etc/nginx/conf.d
+    command: /bin/sh -c "nginx -g 'daemon off;'"
+    ports:
+      - 8085:80
+    restart: always
+    depends_on: 
+      - app
+    networks:
+      - frontnet
+
+volumes:
+  db-data:
+
+secrets:
+  db-password:
+    file: mysql-db/password.txt
+
+networks:
+  backnet:
+  frontnet:
